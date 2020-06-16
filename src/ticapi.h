@@ -162,7 +162,11 @@ struct tic_mem
         s32 size;
     } samples;
 
+#ifdef _3DS
+    u32 *screen;
+#else
     u32 screen[TIC80_FULLWIDTH * TIC80_FULLHEIGHT];
+#endif
 };
 
 tic_mem* tic_core_create(s32 samplerate);

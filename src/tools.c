@@ -101,10 +101,17 @@ u32* tic_tool_palette_blit(const tic_palette* srcpal)
 
     while(src != end)
     {
+#ifdef _3DS
+        *dst++ = 0xff;
+        *dst++ = src->b;
+        *dst++ = src->g;
+        *dst++ = src->r;
+#else
         *dst++ = src->r;
         *dst++ = src->g;
         *dst++ = src->b;
         *dst++ = 0xff;
+#endif
         src++;
     }
 

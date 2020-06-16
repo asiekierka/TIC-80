@@ -893,7 +893,7 @@ static void makeDir(const char* name)
 
 static void fsFullname(const char *path, char *fullname)
 {
-#if defined(BAREMETALPI)
+#if defined(BAREMETALPI) || defined(_3DS)
     dbg("fsFullname %s", path);
     // TODO BAREMETALPI
 #else

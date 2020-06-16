@@ -28,6 +28,10 @@
 #include <stddef.h>
 #include <time.h>
 
+#ifdef _3DS
+#include <3ds.h>
+#endif
+
 #include "ticapi.h"
 #include "tools.h"
 #include "tilesheet.h"
@@ -2241,6 +2245,9 @@ tic_mem* tic_core_create(s32 samplerate)
     }
 
     machine->samplerate = samplerate;
+#ifdef _3DS
+    machine->memory.screen = linearAlloc(TIC80_FULLWIDTH * TIC80_FULLHEIGHT * sizeof(u32));
+#endif
     machine->memory.samples.size = samplerate * TIC_STEREO_CHANNELS / TIC80_FRAMERATE * sizeof(s16);
     machine->memory.samples.buffer = malloc(machine->memory.samples.size);
 
