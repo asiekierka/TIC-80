@@ -291,10 +291,13 @@ static void n3ds_draw_frame(void)
     GSPGPU_FlushDataCache(platform.render.tic_tex.data, 256 * 256 * 4);
 
 #ifdef RENDER_KEYBOARD
-    C3D_FrameDrawOn(platform.render.target_bottom);
-    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_bottom);
+    if (platform.keyboard.render_dirty) {
+        C3D_FrameDrawOn(platform.render.target_bottom);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_bottom);
 
-    n3ds_keyboard_draw(&platform.keyboard);
+        n3ds_keyboard_draw(&platform.keyboard);
+        platform.keyboard.render_dirty = false;
+    }
 #endif
 
     C3D_FrameDrawOn(platform.render.target_top);
@@ -445,7 +448,10 @@ int main(int argc, char **argv) {
             break;
         }
 
+        time_start = getPerformanceCounter();
         platform.studio->tick();
+        time_end = getPerformanceCounter();
+        printf("ticking time = %.2f us\n", (time_end - time_start) / CPU_TICKS_PER_USEC);
 
         // append audio data
 

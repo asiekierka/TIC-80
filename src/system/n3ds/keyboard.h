@@ -10,6 +10,7 @@ typedef struct {
 	C3D_Tex tex;
 	u8 kd[8];
 	u32 kd_count;
+	bool render_dirty;
 } tic_n3ds_keyboard;
 
 void n3ds_keyboard_init(tic_n3ds_keyboard *kbd);

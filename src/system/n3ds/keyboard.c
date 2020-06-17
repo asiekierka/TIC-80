@@ -108,7 +108,10 @@ float cmul);
 
 void n3ds_keyboard_init(tic_n3ds_keyboard *kbd) {
 	memset(kbd, 0, sizeof(tic_n3ds_keyboard));
-	ctr_load_png(&kbd->tex, "romfs:/kbd_display.png", TEXTURE_TARGET_VRAM);
+	if (!ctr_load_png(&kbd->tex, "romfs:/kbd_display.png", TEXTURE_TARGET_VRAM)) {
+		consoleInit(GFX_BOTTOM, NULL);
+	}
+	kbd->render_dirty = true;
 }
 
 void n3ds_keyboard_free(tic_n3ds_keyboard *kbd) {
@@ -118,14 +121,16 @@ void n3ds_keyboard_free(tic_n3ds_keyboard *kbd) {
 void n3ds_keyboard_draw(tic_n3ds_keyboard *kbd) {
 	const touch_area_t* area;
 
-	n3ds_draw_texture(&(kbd->tex), 0, 0, 0, 16, 320, 240, 320, 240, 1.0f);
-	for(int i = 0; i < kbd->kd_count; i++)
-	{
-		area = &touch_areas[kbd->kd[i]];
-		n3ds_draw_texture(&(kbd->tex), area->x, area->y,
-			area->x, 16 + (area->y - 1),
-			area->w, area->h - 1,
-			area->w, area->h - 1, 0.5f);
+	if (kbd->tex.data != NULL) {
+		n3ds_draw_texture(&(kbd->tex), 0, 0, 0, 16, 320, 240, 320, 240, 1.0f);
+		for(int i = 0; i < kbd->kd_count; i++)
+		{
+			area = &touch_areas[kbd->kd[i]];
+			n3ds_draw_texture(&(kbd->tex), area->x, area->y,
+				area->x, 16 + (area->y - 1),
+				area->w, area->h - 1,
+				area->w, area->h - 1, 0.5f);
+		}
 	}
 }
 
@@ -159,8 +164,7 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 	key_down = hidKeysDown();
 	key_up = hidKeysUp();
 
-	changed = (key_down | key_up) & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT | KEY_A | KEY_B | KEY_X | KEY_Y);
-
+	changed = false;
 	if ((key_down | key_up) & KEY_TOUCH)
 	{
 		hidTouchRead(&touch);
@@ -195,8 +199,11 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		}
 	}
 
+	changed |= (key_down | key_up) & (KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT | KEY_A | KEY_B | KEY_X | KEY_Y);
+
 	if (changed) {
 		// apply to TIC-80
+		kbd->render_dirty = true;
 		key_held = hidKeysHeld();
 		
 		tic_kbd->data = 0;
@@ -213,10 +220,10 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		MAP_BUTTON_KEY(KEY_DOWN, tic_key_down);
 		MAP_BUTTON_KEY(KEY_LEFT, tic_key_left);
 		MAP_BUTTON_KEY(KEY_RIGHT, tic_key_right);
-		MAP_BUTTON_KEY(KEY_A, tic_key_z);
-		MAP_BUTTON_KEY(KEY_B, tic_key_x);
-		MAP_BUTTON_KEY(KEY_X, tic_key_a);
-		MAP_BUTTON_KEY(KEY_Y, tic_key_s);
+		MAP_BUTTON_KEY(KEY_B, tic_key_z);
+		MAP_BUTTON_KEY(KEY_A, tic_key_x);
+		MAP_BUTTON_KEY(KEY_Y, tic_key_a);
+		MAP_BUTTON_KEY(KEY_X, tic_key_s);
 
 		// TODO: merge with sdlgpu.c
 		if (chcode != NULL) {

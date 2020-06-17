@@ -205,6 +205,10 @@ add_library(lua STATIC ${LUA_SRC})
 target_compile_definitions(lua PRIVATE LUA_COMPAT_5_2)
 target_include_directories(lua INTERFACE ${THIRDPARTY_DIR}/lua)
 
+if(N3DS)
+    target_compile_definitions(lua PUBLIC LUA_32BITS)
+endif()
+
 ################################
 # LPEG
 ################################
@@ -653,10 +657,13 @@ target_include_directories(${TIC80_OUTPUT}lib PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
 
 target_link_libraries(${TIC80_OUTPUT}lib tic80core zlib zip wave_writer)
 
-if(NOT DISABLE_NETWORKING)
 if(N3DS)
     target_include_directories(${TIC80_OUTPUT}lib PRIVATE ${DEVKITPRO}/portlibs/3ds/include)
     target_link_directories(${TIC80_OUTPUT}lib PUBLIC ${DEVKITPRO}/portlibs/3ds/lib)
+endif()
+
+if(NOT DISABLE_NETWORKING)
+if(N3DS)
     target_link_libraries(${TIC80_OUTPUT}lib curl mbedtls mbedx509 mbedcrypto)
 else()
     target_link_libraries(${TIC80_OUTPUT}lib libcurl)
