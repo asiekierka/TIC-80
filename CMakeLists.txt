@@ -56,6 +56,8 @@ option(BUILD_PLAYER "Build standalone players" ${BUILD_PLAYER_DEFAULT})
 
 if (N3DS)
     set(BUILD_SDL off)
+    # disable CURL linking - use HTTPC instead
+    set(DISABLE_NETWORKING TRUE)
 endif()
 
 if (BAREMETALPI)
@@ -871,10 +873,15 @@ endif()
 
 if(N3DS)
     set(TIC80_SRC ${TIC80_SRC}
-        ${CMAKE_SOURCE_DIR}/src/system/n3ds/keyboard.c
         ${CMAKE_SOURCE_DIR}/src/system/n3ds/utils.c
+        ${CMAKE_SOURCE_DIR}/src/system/n3ds/keyboard.c
+        ${CMAKE_SOURCE_DIR}/src/system/n3ds/net_httpc.c
         ${CMAKE_SOURCE_DIR}/src/system/n3ds/main.c
     )
+
+    if (DISABLE_NETWORKING)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DENABLE_HTTPC")
+    endif()
 
     add_executable(${TIC80_OUTPUT}-n3ds ${TIC80_SRC})
 

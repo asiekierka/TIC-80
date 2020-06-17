@@ -35,14 +35,18 @@
 
 #include "keyboard.h"
 #include "utils.h"
+#include "net_httpc.h"
 
+// #define RENDER_CONSOLE_TOP
 #define RENDER_KEYBOARD
 
 static struct
 {
     Studio* studio;
     char* clipboard;
+#ifndef DISABLE_NETWORKING
     Net* net;
+#endif
 
     struct
     {
@@ -67,6 +71,10 @@ static struct
     } audio;
 
     tic_n3ds_keyboard keyboard;
+#ifdef ENABLE_HTTPC
+    tic_n3ds_net httpc;
+#endif
+    LightLock tick_lock;
 } platform;
 
 static const char n3ds_shader_shbin[289] = {
@@ -137,12 +145,24 @@ static u64 getPerformanceFrequency()
 
 static void* httpGetSync(const char* url, s32* size)
 {
+#ifndef DISABLE_NETWORKING
     return netGetSync(platform.net, url, size);
+#else
+#ifdef ENABLE_HTTPC
+    return n3ds_net_get_sync(&platform.httpc, url, size);
+#endif
+#endif
 }
 
 static void httpGet(const char* url, HttpGetCallback callback, void* calldata)
 {
+#ifndef DISABLE_NETWORKING
     netGet(platform.net, url, callback, calldata);
+#else
+#ifdef ENABLE_HTTPC
+    n3ds_net_get(&platform.httpc, url, callback, calldata);
+#endif
+#endif
 }
 
 static void n3ds_file_dialog_load(file_dialog_load_callback callback, void* data)
@@ -265,10 +285,9 @@ float cmul) {
     C3D_ImmDrawEnd();
 }
 
-static void n3ds_draw_frame(void)
+static void n3ds_copy_frame(void)
 {
     u32 *in = platform.studio->tic->screen;
-    u32 *out;
 
 /*    for (int y = 0; y < TIC80_FULLHEIGHT; y++) {
         out = platform.render.tic_buf + (y * 256);
@@ -286,9 +305,12 @@ static void n3ds_draw_frame(void)
         GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
         GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO))
     );
-
-    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     GSPGPU_FlushDataCache(platform.render.tic_tex.data, 256 * 256 * 4);
+}
+
+static void n3ds_draw_frame(void)
+{
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 
 #ifdef RENDER_KEYBOARD
     if (platform.keyboard.render_dirty) {
@@ -300,6 +322,7 @@ static void n3ds_draw_frame(void)
     }
 #endif
 
+#ifndef RENDER_CONSOLE_TOP
     C3D_FrameDrawOn(platform.render.target_top);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_top);
     C3D_RenderTargetClear(platform.render.target_top, C3D_CLEAR_ALL, 0, 0);
@@ -324,6 +347,7 @@ static void n3ds_draw_frame(void)
             TIC80_FULLWIDTH, TIC80_FULLHEIGHT,
             1.0f);
     }
+#endif
 
     C3D_FrameEnd(0);
 }
@@ -356,7 +380,7 @@ void n3ds_sound_init(int sample_rate)
     platform.audio.ndspBuf[1].data_vaddr = &platform.audio.buffer[buffer_size];
     platform.audio.ndspBuf[1].nsamples = platform.audio.samples;
 
-    platform.audio.ndspBuf[0].status = NDSP_WBUF_DONE;
+    ndspChnWaveBufAdd(0, &platform.audio.ndspBuf[0]);
     ndspChnWaveBufAdd(0, &platform.audio.ndspBuf[1]);
 
     platform.audio.curr_block = 0;
@@ -420,38 +444,48 @@ int main(int argc, char **argv) {
         argv_used = backup_argv;
     }
 
+    osSetSpeedupEnable(1);
+
     gfxInitDefault();
     gfxSet3D(false);
+#ifdef RENDER_CONSOLE_TOP
+    consoleInit(GFX_TOP, NULL);
+#else
 #ifndef RENDER_KEYBOARD
     consoleInit(GFX_BOTTOM, NULL);
+#endif
 #endif
     romfsInit();
 
     memset(&platform, 0, sizeof(platform));
+    LightLock_Init(&platform.tick_lock);
 
+#ifdef ENABLE_HTTPC
+    n3ds_net_init(&platform.httpc, &platform.tick_lock);
+#endif
+    
     n3ds_draw_init();
     n3ds_keyboard_init(&platform.keyboard);
 
+#ifndef DISABLE_NETWORKING
     platform.net = createNet();
+#endif
     platform.studio = studioInit(argc_used, argv_used, 48000, "./", &systemInterface);
 
     n3ds_sound_init(48000);
 
-    u64 time_start = 0;
-    u64 time_end = 0;
+//    u64 time_start = 0;
+//    u64 time_end = 0;
 
-    while (aptMainLoop()) {
+    while (aptMainLoop() && !platform.studio->quit) {
+        LightLock_Lock(&platform.tick_lock);
+#ifndef DISABLE_NETWORKING
         netTick(platform.net);
+#endif
         keyboard_update();
 
-        if (platform.studio->quit) {
-            break;
-        }
-
-        time_start = getPerformanceCounter();
         platform.studio->tick();
-        time_end = getPerformanceCounter();
-        printf("ticking time = %.2f us\n", (time_end - time_start) / CPU_TICKS_PER_USEC);
+//        printf("ticking time = %.2f us\n", (time_end - time_start) / CPU_TICKS_PER_USEC);
 
         // append audio data
 
@@ -465,19 +499,26 @@ int main(int argc, char **argv) {
             platform.audio.curr_block ^= 1;
         }
 
-        time_start = getPerformanceCounter();
+        n3ds_copy_frame();
+        LightLock_Unlock(&platform.tick_lock);
+
         n3ds_draw_frame();
-        time_end = getPerformanceCounter();
-        printf("drawing time = %.2f us\n", (time_end - time_start) / CPU_TICKS_PER_USEC);
     }
 
     n3ds_sound_exit();
     
     platform.studio->close();
+#ifndef DISABLE_NETWORKING
     closeNet(platform.net);
+#endif
 
     n3ds_keyboard_free(&platform.keyboard);
     n3ds_draw_exit();
+
+#ifdef ENABLE_HTTPC
+    n3ds_net_free(&platform.httpc);
+#endif
+
     romfsExit();
     gfxExit();
 
