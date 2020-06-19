@@ -179,11 +179,10 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 	int i, j;
 
 	tic80_keyboard *tic_kbd = &tic->ram.input.keyboard;
-	tic80_gamepads *tic_pad = &tic->ram.input.gamepads;
 
 	memset(&state, 0, sizeof(state));
-	hidScanInput();
 	key_down = hidKeysDown();
+	key_held = hidKeysHeld();
 	key_up = hidKeysUp();
 
 	changed = false;
@@ -226,7 +225,6 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 	if (changed) {
 		// apply to TIC-80
 		kbd->render_dirty = true;
-		key_held = hidKeysHeld();
 		
 		tic_kbd->data = 0;
 		int buffer_pos = 0;
@@ -242,10 +240,10 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		MAP_BUTTON_KEY(KEY_DOWN, tic_key_down);
 		MAP_BUTTON_KEY(KEY_LEFT, tic_key_left);
 		MAP_BUTTON_KEY(KEY_RIGHT, tic_key_right);
-		MAP_BUTTON_KEY(KEY_B, tic_key_z);
-		MAP_BUTTON_KEY(KEY_A, tic_key_x);
-		MAP_BUTTON_KEY(KEY_Y, tic_key_a);
-		MAP_BUTTON_KEY(KEY_X, tic_key_s);
+		MAP_BUTTON_KEY(KEY_A, tic_key_z);
+		MAP_BUTTON_KEY(KEY_B, tic_key_x);
+		MAP_BUTTON_KEY(KEY_X, tic_key_a);
+		MAP_BUTTON_KEY(KEY_Y, tic_key_s);
 
 		// TODO: merge with sdlgpu.c
 		if (chcode != NULL) {
@@ -277,14 +275,49 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 			}
 		}
 	}
+}
 
+void n3ds_gamepad_update(tic_n3ds_keyboard *kbd, tic_mem *tic) {
+	tic80_gamepads *tic_pad = &tic->ram.input.gamepads;
+	tic80_mouse *tic_mouse = &tic->ram.input.mouse;
+	u32 key_held = hidKeysHeld();
+	u64 curr_clock = svcGetSystemTick();
+	circlePosition cstick;
+
+	// gamepad
 	tic_pad->first.data = 0;
 	tic_pad->first.up = (key_held & KEY_UP) != 0;
 	tic_pad->first.down = (key_held & KEY_DOWN) != 0;
 	tic_pad->first.left = (key_held & KEY_LEFT) != 0;
 	tic_pad->first.right = (key_held & KEY_RIGHT) != 0;
-	tic_pad->first.a = (key_held & KEY_B) != 0;
-	tic_pad->first.b = (key_held & KEY_A) != 0;
-	tic_pad->first.x = (key_held & KEY_Y) != 0;
-	tic_pad->first.y = (key_held & KEY_X) != 0;
+	tic_pad->first.a = (key_held & KEY_A) != 0;
+	tic_pad->first.b = (key_held & KEY_B) != 0;
+	tic_pad->first.x = (key_held & KEY_X) != 0;
+	tic_pad->first.y = (key_held & KEY_Y) != 0;
+
+	// mouse scroll
+	tic_mouse->scrollx = 0;
+	tic_mouse->scrolly = 0;
+	
+	if (curr_clock >= kbd->scroll_debounce) {		
+		if (key_held & KEY_CSTICK_UP) {
+			tic_mouse->scrolly = 1;
+		} else if (key_held & KEY_CSTICK_DOWN) {
+			tic_mouse->scrolly = -1;
+		}
+
+		if (key_held & KEY_CSTICK_LEFT) {
+			tic_mouse->scrollx = -1;
+		} else if (key_held & KEY_CSTICK_RIGHT) {
+			tic_mouse->scrollx = 1;
+		}
+
+		if (tic_mouse->scrollx != 0 || tic_mouse->scrolly != 0) {
+			hidCstickRead(&cstick);
+			int dmax = cstick.dx > cstick.dy ? cstick.dx : cstick.dy;
+			float delay = 250.0f / (1 + (dmax / 22));
+
+			kbd->scroll_debounce = curr_clock + (u64) (delay * CPU_TICKS_PER_MSEC);
+		}
+	}
 }

@@ -38,7 +38,7 @@
 #include "net_httpc.h"
 
 // #define RENDER_CONSOLE_TOP
-#define RENDER_KEYBOARD
+#define AUDIO_FREQ 44100
 
 static struct
 {
@@ -61,7 +61,13 @@ static struct
         C3D_AttrInfo shader_attr;
 
         int scaled;
+        bool on_bottom;
     } render;
+
+    struct {
+        int x, y;
+        int width, height;
+    } screen_size;
 
     struct
     {
@@ -188,7 +194,6 @@ static void setWindowTitle(const char* title)
 
 static void openSystemPath(const char* path)
 {
-
 }
 
 static void preseed()
@@ -205,6 +210,23 @@ static void pollEvent()
 static void updateConfig()
 {
 
+}
+
+static void update_screen_size(void) {
+    int scr_width = platform.render.on_bottom ? 320 : 400;
+    
+    if (platform.render.scaled > 0) {
+        float sw = platform.render.on_bottom ? 316.0f : 400.0f;
+        float sh = TIC80_FULLHEIGHT * sw / TIC80_FULLWIDTH;
+        platform.screen_size.width = (int) (sw + 0.5f);
+        platform.screen_size.height = (int) (sh + 0.5f);
+    } else {
+        platform.screen_size.width = TIC80_FULLWIDTH;
+        platform.screen_size.height = TIC80_FULLHEIGHT;
+    }
+
+    platform.screen_size.x = (scr_width - platform.screen_size.width) >> 1;
+    platform.screen_size.y = (240 - platform.screen_size.height) >> 1;
 }
 
 static void n3ds_draw_init(void)
@@ -248,6 +270,8 @@ static void n3ds_draw_init(void)
 
     C3D_BindProgram(&(platform.render.shader_program));
     C3D_SetAttrInfo(&(platform.render.shader_attr));
+
+    update_screen_size();
 }
 
 static void n3ds_draw_exit(void)
@@ -310,46 +334,47 @@ static void n3ds_copy_frame(void)
 
 static void n3ds_draw_frame(void)
 {
-    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-
-#ifdef RENDER_KEYBOARD
-    if (platform.keyboard.render_dirty) {
+    if (platform.keyboard.render_dirty && !platform.render.on_bottom) {
         C3D_FrameDrawOn(platform.render.target_bottom);
         C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_bottom);
 
         n3ds_keyboard_draw(&platform.keyboard);
         platform.keyboard.render_dirty = false;
     }
+
+    if (!platform.render.on_bottom) {
+#ifdef RENDER_CONSOLE_TOP
+        return;
 #endif
-
-#ifndef RENDER_CONSOLE_TOP
-    C3D_FrameDrawOn(platform.render.target_top);
-    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_top);
-    C3D_RenderTargetClear(platform.render.target_top, C3D_CLEAR_ALL, 0, 0);
-
-    if (platform.render.scaled > 0) {
-        float sw = 400.0f;
-        float sh = TIC80_FULLHEIGHT * 400.0f / TIC80_FULLWIDTH;
-        int isw = (int) sw;
-        int ish = (int) sh;
-
-        n3ds_draw_texture(&platform.render.tic_tex,
-            (400 - isw) >> 1, (240 - ish) >> 1,
-            0, 0,
-            isw, ish,
-            TIC80_FULLWIDTH, TIC80_FULLHEIGHT,
-            1.0f);
     } else {
-        n3ds_draw_texture(&platform.render.tic_tex,
-            (400 - TIC80_FULLWIDTH) >> 1, (240 - TIC80_FULLHEIGHT) >> 1,
-            0, 0,
-            TIC80_FULLWIDTH, TIC80_FULLHEIGHT,
-            TIC80_FULLWIDTH, TIC80_FULLHEIGHT,
-            1.0f);
-    }
-#endif
+        // clear top screen
+        C3D_FrameDrawOn(platform.render.target_top);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_top);
 
-    C3D_FrameEnd(0);
+        // fill with border color
+        C3D_RenderTargetClear(platform.render.target_top, C3D_CLEAR_ALL, platform.studio->tic->screen[0] >> 8, 0);
+    }
+
+    if (platform.render.on_bottom) {
+        C3D_FrameDrawOn(platform.render.target_bottom);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_bottom);
+
+        // fill with border color
+        C3D_RenderTargetClear(platform.render.target_bottom, C3D_CLEAR_ALL, platform.studio->tic->screen[0] >> 8, 0);
+    } else {
+        C3D_FrameDrawOn(platform.render.target_top);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, platform.render.shader_proj_mtx_loc, &platform.render.proj_top);
+
+        // fill with border color
+        C3D_RenderTargetClear(platform.render.target_top, C3D_CLEAR_ALL, platform.studio->tic->screen[0] >> 8, 0);
+    }
+
+    n3ds_draw_texture(&platform.render.tic_tex,
+        platform.screen_size.x, platform.screen_size.y,
+        0, 0,
+        platform.screen_size.width, platform.screen_size.height,
+        TIC80_FULLWIDTH, TIC80_FULLHEIGHT,
+        1.0f);
 }
 
 void n3ds_sound_init(int sample_rate)
@@ -418,18 +443,64 @@ static System systemInterface =
     .updateConfig = updateConfig,
 };
 
+static void touch_update(void) {
+	u32 key_down = hidKeysDown();
+	u32 key_held = hidKeysHeld();
+    touchPosition touch;
+    tic80_mouse *mouse = &platform.studio->tic->ram.input.mouse;
+
+    if (key_held & KEY_TOUCH)
+    {
+		hidTouchRead(&touch);
+        if (
+            touch.px >= platform.screen_size.x
+            && touch.py >= platform.screen_size.y
+            && touch.px < (platform.screen_size.x + platform.screen_size.width)
+            && touch.py < (platform.screen_size.y + platform.screen_size.height)
+        ) {
+            int tic80_x = (int) ((touch.px - platform.screen_size.x) * TIC80_FULLWIDTH / platform.screen_size.width) - TIC80_OFFSET_LEFT;
+            int tic80_y = (int) ((touch.py - platform.screen_size.y) * TIC80_FULLHEIGHT / platform.screen_size.height) - TIC80_OFFSET_TOP;
+            if (
+                tic80_x >= 0
+                && tic80_y >= 0
+                && tic80_x < (TIC80_WIDTH)
+                && tic80_y < (TIC80_HEIGHT)
+            ) {
+                mouse->x = tic80_x;
+                mouse->y = tic80_y;
+                mouse->left = true;
+            }
+        }
+    }
+}
+
 static void keyboard_update(void) {
-    n3ds_keyboard_update(&platform.keyboard, platform.studio->tic, &platform.studio->text);
+    hidScanInput();
+
+    platform.studio->tic->ram.input.mouse.btns = 0;
+    if (!platform.render.on_bottom) {
+        n3ds_keyboard_update(&platform.keyboard, platform.studio->tic, &platform.studio->text);
+    } else {
+        touch_update();
+    }
+    n3ds_gamepad_update(&platform.keyboard, platform.studio->tic);
 
     u32 kup = hidKeysUp();
     if (kup & KEY_SELECT) {
         platform.render.scaled = (platform.render.scaled + 1) % 3;
 
-        if (platform.render.scaled > 1) {
+        if (platform.render.scaled == 2) {
             C3D_TexSetFilter(&platform.render.tic_tex, GPU_LINEAR, GPU_LINEAR);
         } else {
             C3D_TexSetFilter(&platform.render.tic_tex, GPU_NEAREST, GPU_LINEAR);
         }
+
+        update_screen_size();
+    }
+    if (kup & (KEY_L | KEY_R)) {
+        platform.render.on_bottom = !platform.render.on_bottom;
+        platform.keyboard.render_dirty = true;
+        update_screen_size();
     }
 }
 
@@ -450,10 +521,6 @@ int main(int argc, char **argv) {
     gfxSet3D(false);
 #ifdef RENDER_CONSOLE_TOP
     consoleInit(GFX_TOP, NULL);
-#else
-#ifndef RENDER_KEYBOARD
-    consoleInit(GFX_BOTTOM, NULL);
-#endif
 #endif
     romfsInit();
 
@@ -470,14 +537,16 @@ int main(int argc, char **argv) {
 #ifndef DISABLE_NETWORKING
     platform.net = createNet();
 #endif
-    platform.studio = studioInit(argc_used, argv_used, 48000, "./", &systemInterface);
+    platform.studio = studioInit(argc_used, argv_used, AUDIO_FREQ, "./", &systemInterface);
 
-    n3ds_sound_init(48000);
+    n3ds_sound_init(AUDIO_FREQ);
 
 //    u64 time_start = 0;
 //    u64 time_end = 0;
 
     while (aptMainLoop() && !platform.studio->quit) {
+        u32 start_frame = C3D_FrameCounter(0);
+
         LightLock_Lock(&platform.tick_lock);
 #ifndef DISABLE_NETWORKING
         netTick(platform.net);
@@ -485,9 +554,15 @@ int main(int argc, char **argv) {
         keyboard_update();
 
         platform.studio->tick();
-//        printf("ticking time = %.2f us\n", (time_end - time_start) / CPU_TICKS_PER_USEC);
+        n3ds_copy_frame();
 
-        // append audio data
+        LightLock_Unlock(&platform.tick_lock);
+
+        bool sync = (C3D_FrameCounter(0) == start_frame);
+        C3D_FrameBegin(sync ? C3D_FRAME_SYNCDRAW : 0);
+
+        // append audio data, this is the most consistent timing
+        // assumption: no httpGet call results in the audio changing
 
         ndspWaveBuf *waveBuf = &platform.audio.ndspBuf[platform.audio.curr_block];
         if (waveBuf->status == NDSP_WBUF_DONE) {
@@ -499,10 +574,9 @@ int main(int argc, char **argv) {
             platform.audio.curr_block ^= 1;
         }
 
-        n3ds_copy_frame();
-        LightLock_Unlock(&platform.tick_lock);
-
         n3ds_draw_frame();
+
+        C3D_FrameEnd(0);
     }
 
     n3ds_sound_exit();
