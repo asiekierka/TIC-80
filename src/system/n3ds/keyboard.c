@@ -34,6 +34,7 @@ typedef struct
 } touch_area_t;
 
 #define TOUCH_AREA_MODIFIER 1
+#define TOUCH_AREA_MOD_TOGGLE 2
 
 static const touch_area_t touch_areas[] = {
   { 2, 97, 22, 16, tic_key_escape, 0 },
@@ -109,6 +110,7 @@ static const touch_area_t touch_areas[] = {
   { 244, 175, 22, 22, tic_key_slash, 0 },
   { 265, 175, 53, 22, tic_key_shift, TOUCH_AREA_MODIFIER },
 
+  { 2, 196, 28, 22, tic_key_capslock, TOUCH_AREA_MODIFIER | TOUCH_AREA_MOD_TOGGLE },
   { 29, 196, 37, 22, tic_key_alt, TOUCH_AREA_MODIFIER },
   { 65, 196, 142, 22, tic_key_space, 0 },
   { 206, 196, 28, 22, tic_key_alt, TOUCH_AREA_MODIFIER },
@@ -140,18 +142,20 @@ void n3ds_keyboard_free(tic_n3ds_keyboard *kbd) {
 	C3D_TexDelete(&kbd->tex);
 }
 
-void n3ds_keyboard_draw(tic_n3ds_keyboard *kbd) {
-	const touch_area_t* area;
+static void n3ds_keyboard_draw_pressed(tic_n3ds_keyboard *kbd, int pos) {
+	const touch_area_t* area = &touch_areas[pos];
+	n3ds_draw_texture(&(kbd->tex), area->x, area->y,
+		area->x, 16 + (area->y - 1),
+		area->w, area->h - 1,
+		area->w, area->h - 1, 0.5f);
+}
 
+void n3ds_keyboard_draw(tic_n3ds_keyboard *kbd) {
 	if (kbd->tex.data != NULL) {
 		n3ds_draw_texture(&(kbd->tex), 0, 0, 0, 16, 320, 240, 320, 240, 1.0f);
 		for(int i = 0; i < kbd->kd_count; i++)
 		{
-			area = &touch_areas[kbd->kd[i]];
-			n3ds_draw_texture(&(kbd->tex), area->x, area->y,
-				area->x, 16 + (area->y - 1),
-				area->w, area->h - 1,
-				area->w, area->h - 1, 0.5f);
+			n3ds_keyboard_draw_pressed(kbd, kbd->kd[i]);
 		}
 	}
 }
@@ -197,15 +201,24 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 				area = &touch_areas[i];
 				if (n3ds_key_touched(&touch, area))
 				{
-					bool set = false;
+					int set = -1;
 					for (j = 0; j < kbd->kd_count; j++) {
 						if (kbd->kd[j] == i) {
-							set = true;
+							set = j;
 							break;
 						}
 					}
-					if (!set) {
+					if (set < 0) {
 						kbd->kd[kbd->kd_count++] = i;
+						changed = true;
+					} else if (area->flags & TOUCH_AREA_MODIFIER) {
+						// allow de-pressing modifiers
+						kbd->kd[set] = 0;
+						for (j = set + 1; j < kbd->kd_count; j++) {
+							kbd->kd[j - 1] = kbd->kd[j];
+							kbd->kd[j] = 0;
+						}
+						kbd->kd_count--;
 						changed = true;
 					}
 					break;
@@ -214,7 +227,12 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		} else if (key_up & KEY_TOUCH)
 		{
 			if (kbd->kd_count > 0 && !(touch_areas[kbd->kd[kbd->kd_count - 1]].flags & TOUCH_AREA_MODIFIER)) {
-				kbd->kd_count = 0;
+				for (i = 0, j = 0; i < kbd->kd_count; i++) {
+					if (touch_areas[kbd->kd[i]].flags & TOUCH_AREA_MOD_TOGGLE) {
+						kbd->kd[j++] = kbd->kd[i];
+					}
+				}
+				kbd->kd_count = j;
 				changed = true;
 			}
 		}
