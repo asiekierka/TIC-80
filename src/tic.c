@@ -2246,7 +2246,8 @@ tic_mem* tic_core_create(s32 samplerate)
 
     machine->samplerate = samplerate;
 #ifdef _3DS
-    machine->memory.screen = linearAlloc(TIC80_FULLWIDTH * TIC80_FULLHEIGHT * sizeof(u32));
+    // use TIC80_FULLHEIGHT + 1 here to minimize glitches in linear scaling mode
+    machine->memory.screen = linearAlloc(TIC80_FULLWIDTH * (TIC80_FULLHEIGHT + 2) * sizeof(u32));
 #endif
     machine->memory.samples.size = samplerate * TIC_STEREO_CHANNELS / TIC80_FRAMERATE * sizeof(s16);
     machine->memory.samples.buffer = malloc(machine->memory.samples.size);

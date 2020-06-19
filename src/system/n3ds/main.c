@@ -309,6 +309,8 @@ float cmul) {
     C3D_ImmDrawEnd();
 }
 
+#define FRAME_PITCH (TIC80_FULLWIDTH * sizeof(u32))
+
 static void n3ds_copy_frame(void)
 {
     u32 *in = platform.studio->tic->screen;
@@ -320,8 +322,19 @@ static void n3ds_copy_frame(void)
         }
         memcpy(out, in, sizeof(u32) * TIC80_FULLWIDTH);
     } */
+    
+    if (platform.render.scaled == 2) {
+        // pad border 1 pixel lower to minimize glitches in "linear" scaling mode
+        memcpy(
+            in + (FRAME_PITCH * TIC80_FULLHEIGHT),
+            in + (FRAME_PITCH * (TIC80_FULLHEIGHT - 1)),
+            FRAME_PITCH
+        );
+        GSPGPU_FlushDataCache(in, (TIC80_FULLHEIGHT + 1) * FRAME_PITCH);
+    } else {    
+        GSPGPU_FlushDataCache(in, TIC80_FULLHEIGHT * FRAME_PITCH);
+    }
 
-    GSPGPU_FlushDataCache(in, 256 * TIC80_FULLHEIGHT * 4);
     C3D_SyncDisplayTransfer(
         in, GX_BUFFER_DIM(256, 256),
         platform.render.tic_tex.data, GX_BUFFER_DIM(256, 256),
