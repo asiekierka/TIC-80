@@ -500,7 +500,7 @@ static void onAddFile(const char* name, const u8* buffer, s32 size, void* data, 
                 fwrite(buffer, 1, size, dest);
                 fclose(dest);
 
-#if !defined(__TIC_WINRT__) && !defined(__TIC_WINDOWS__)
+#if !defined(__TIC_WINRT__) && !defined(__TIC_WINDOWS__) && !defined(_3DS)
                 if(mode)
                     chmod(path, mode);
 #endif

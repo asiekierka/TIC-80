@@ -39,6 +39,7 @@
 
 // #define RENDER_CONSOLE_TOP
 #define AUDIO_FREQ 44100
+#define AUDIO_BLOCKS 4
 
 static struct
 {
@@ -73,7 +74,7 @@ static struct
     {
         int samples, buffer_size, curr_block;
         u8* buffer;
-        ndspWaveBuf ndspBuf[2];
+        ndspWaveBuf ndspBuf[AUDIO_BLOCKS];
     } audio;
 
     tic_n3ds_keyboard keyboard;
@@ -398,9 +399,9 @@ void n3ds_sound_init(int sample_rate)
     platform.audio.samples = platform.studio->tic->samples.size / (TIC_STEREO_CHANNELS * sizeof(u16));
     buffer_size = platform.audio.samples * (TIC_STEREO_CHANNELS * sizeof(u16));
 
-    platform.audio.buffer = linearAlloc(buffer_size * 2);
+    platform.audio.buffer = linearAlloc(buffer_size * AUDIO_BLOCKS);
     platform.audio.buffer_size = buffer_size;
-    memset(platform.audio.buffer, 0, buffer_size * 2);
+    memset(platform.audio.buffer, 0, buffer_size * AUDIO_BLOCKS);
 
     ndspInit();
     ndspSetOutputMode(NDSP_OUTPUT_STEREO);
@@ -413,13 +414,13 @@ void n3ds_sound_init(int sample_rate)
     mix[1] = 1.0f;
     ndspChnSetMix(0, mix);
 
-    platform.audio.ndspBuf[0].data_vaddr = &platform.audio.buffer[0];
-    platform.audio.ndspBuf[0].nsamples = platform.audio.samples;
-    platform.audio.ndspBuf[1].data_vaddr = &platform.audio.buffer[buffer_size];
-    platform.audio.ndspBuf[1].nsamples = platform.audio.samples;
+    for(int i = 0; i < AUDIO_BLOCKS; i++)
+    {
+        platform.audio.ndspBuf[i].data_vaddr = &platform.audio.buffer[buffer_size * i];
+        platform.audio.ndspBuf[i].nsamples = platform.audio.samples;
 
-    ndspChnWaveBufAdd(0, &platform.audio.ndspBuf[0]);
-    ndspChnWaveBufAdd(0, &platform.audio.ndspBuf[1]);
+        ndspChnWaveBufAdd(0, &platform.audio.ndspBuf[i]);
+    }
 
     platform.audio.curr_block = 0;
 }
@@ -455,6 +456,19 @@ static System systemInterface =
     .poll = pollEvent,
     .updateConfig = updateConfig,
 };
+
+static void audio_update(void) {
+    ndspWaveBuf *wave_buf = &platform.audio.ndspBuf[platform.audio.curr_block];
+
+    if (wave_buf->status == NDSP_WBUF_DONE) {
+        u16 *audio_ptr = wave_buf->data_pcm16;
+        memcpy(audio_ptr, platform.studio->tic->samples.buffer, platform.audio.buffer_size);
+        DSP_FlushDataCache(audio_ptr, platform.audio.buffer_size);
+
+        ndspChnWaveBufAdd(0, wave_buf);
+        platform.audio.curr_block = (platform.audio.curr_block + 1) % AUDIO_BLOCKS;
+    }
+}
 
 static void touch_update(void) {
 	u32 key_down = hidKeysDown();
@@ -554,9 +568,6 @@ int main(int argc, char **argv) {
 
     n3ds_sound_init(AUDIO_FREQ);
 
-//    u64 time_start = 0;
-//    u64 time_end = 0;
-
     while (aptMainLoop() && !platform.studio->quit) {
         u32 start_frame = C3D_FrameCounter(0);
 
@@ -567,25 +578,13 @@ int main(int argc, char **argv) {
         keyboard_update();
 
         platform.studio->tick();
+        audio_update();
         n3ds_copy_frame();
 
         LightLock_Unlock(&platform.tick_lock);
 
         bool sync = (C3D_FrameCounter(0) == start_frame);
         C3D_FrameBegin(sync ? C3D_FRAME_SYNCDRAW : 0);
-
-        // append audio data, this is the most consistent timing
-        // assumption: no httpGet call results in the audio changing
-
-        ndspWaveBuf *waveBuf = &platform.audio.ndspBuf[platform.audio.curr_block];
-        if (waveBuf->status == NDSP_WBUF_DONE) {
-            u16 *audio_ptr = waveBuf->data_pcm16;
-            memcpy(audio_ptr, platform.studio->tic->samples.buffer, platform.audio.buffer_size);
-            DSP_FlushDataCache(audio_ptr, platform.audio.buffer_size);
-
-            ndspChnWaveBufAdd(0, waveBuf);
-            platform.audio.curr_block ^= 1;
-        }
 
         n3ds_draw_frame();
 

@@ -132,7 +132,8 @@ float cmul);
 
 void n3ds_keyboard_init(tic_n3ds_keyboard *kbd) {
 	memset(kbd, 0, sizeof(tic_n3ds_keyboard));
-	if (!ctr_load_png(&kbd->tex, "romfs:/kbd_display.png", TEXTURE_TARGET_VRAM)) {
+	if (!ctr_load_png(&kbd->tex, "romfs:/kbd_display.png", TEXTURE_TARGET_VRAM))
+	{
 		consoleInit(GFX_BOTTOM, NULL);
 	}
 	kbd->render_dirty = true;
@@ -151,7 +152,8 @@ static void n3ds_keyboard_draw_pressed(tic_n3ds_keyboard *kbd, int pos) {
 }
 
 void n3ds_keyboard_draw(tic_n3ds_keyboard *kbd) {
-	if (kbd->tex.data != NULL) {
+	if (kbd->tex.data != NULL)
+	{
 		n3ds_draw_texture(&(kbd->tex), 0, 0, 0, 16, 320, 240, 320, 240, 1.0f);
 		for(int i = 0; i < kbd->kd_count; i++)
 		{
@@ -169,7 +171,8 @@ bool n3ds_key_touched(touchPosition* pos, const touch_area_t* area)
 }
 
 #define MAP_BUTTON_KEY(keymask, tickey) \
-	if ((key_held & (keymask)) && !state[(tickey)] && (buffer_pos < TIC80_KEY_BUFFER)) { \
+	if ((key_held & (keymask)) && !state[(tickey)] && (buffer_pos < TIC80_KEY_BUFFER)) \
+	{ \
 		tic_kbd->keys[buffer_pos++] = (tickey); \
 		state[(tickey)] = true; \
 	}
@@ -190,28 +193,34 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 	key_up = hidKeysUp();
 
 	changed = false;
-	if ((key_down | key_up) & KEY_TOUCH)
+	if((key_down | key_up) & KEY_TOUCH)
 	{
 		hidTouchRead(&touch);
 
-		if (key_down & KEY_TOUCH)
+		if(key_down & KEY_TOUCH)
 		{
 			for(i = 0; i < touch_areas_len; i++)
 			{
 				area = &touch_areas[i];
-				if (n3ds_key_touched(&touch, area))
+				if(n3ds_key_touched(&touch, area))
 				{
 					int set = -1;
-					for (j = 0; j < kbd->kd_count; j++) {
-						if (kbd->kd[j] == i) {
+					for(j = 0; j < kbd->kd_count; j++)
+					{
+						if(kbd->kd[j] == i)
+						{
 							set = j;
 							break;
 						}
 					}
-					if (set < 0) {
+
+					if(set < 0)
+					{
 						kbd->kd[kbd->kd_count++] = i;
 						changed = true;
-					} else if (area->flags & TOUCH_AREA_MODIFIER) {
+					}
+					else if(area->flags & TOUCH_AREA_MODIFIER)
+					{
 						// allow de-pressing modifiers
 						kbd->kd[set] = 0;
 						for (j = set + 1; j < kbd->kd_count; j++) {
@@ -221,14 +230,16 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 						kbd->kd_count--;
 						changed = true;
 					}
+
 					break;
 				}
 			}
-		} else if (key_up & KEY_TOUCH)
+		}
+		else if(key_up & KEY_TOUCH)
 		{
-			if (kbd->kd_count > 0 && !(touch_areas[kbd->kd[kbd->kd_count - 1]].flags & TOUCH_AREA_MODIFIER)) {
-				for (i = 0, j = 0; i < kbd->kd_count; i++) {
-					if (touch_areas[kbd->kd[i]].flags & TOUCH_AREA_MOD_TOGGLE) {
+			if(kbd->kd_count > 0 && !(touch_areas[kbd->kd[kbd->kd_count - 1]].flags & TOUCH_AREA_MODIFIER)) {
+				for(i = 0, j = 0; i < kbd->kd_count; i++) {
+					if(touch_areas[kbd->kd[i]].flags & TOUCH_AREA_MOD_TOGGLE) {
 						kbd->kd[j++] = kbd->kd[i];
 					}
 				}
@@ -246,9 +257,11 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		
 		tic_kbd->data = 0;
 		int buffer_pos = 0;
-		for (i = 0; i < kbd->kd_count && buffer_pos < TIC80_KEY_BUFFER; i++) {
+		for(i = 0; i < kbd->kd_count && buffer_pos < TIC80_KEY_BUFFER; i++)
+		{
 			tic_keycode curr_keycode = touch_areas[kbd->kd[i]].keycode;
-			if (!state[curr_keycode]) {
+			if(!state[curr_keycode])
+			{
 				tic_kbd->keys[buffer_pos++] = curr_keycode;
 				state[curr_keycode] = true;
 			}
@@ -264,9 +277,11 @@ void n3ds_keyboard_update(tic_n3ds_keyboard *kbd, tic_mem *tic, char *chcode) {
 		MAP_BUTTON_KEY(KEY_Y, tic_key_s);
 
 		// TODO: merge with sdlgpu.c
-		if (chcode != NULL) {
+		if (chcode != NULL)
+		{
 			*chcode = 0;
-			if (buffer_pos > 0) {
+			if (buffer_pos > 0)
+			{
 				static const char Symbols[] =   " abcdefghijklmnopqrstuvwxyz0123456789-=[]\\;'`,./ ";
 				static const char Shift[] =     " ABCDEFGHIJKLMNOPQRSTUVWXYZ)!@#$%^&*(_+{}|:\"~<>? ";
 
@@ -318,19 +333,18 @@ void n3ds_gamepad_update(tic_n3ds_keyboard *kbd, tic_mem *tic) {
 	tic_mouse->scrolly = 0;
 	
 	if (curr_clock >= kbd->scroll_debounce) {		
-		if (key_held & KEY_CSTICK_UP) {
+		if(key_held & KEY_CSTICK_UP)
 			tic_mouse->scrolly = 1;
-		} else if (key_held & KEY_CSTICK_DOWN) {
+		else if(key_held & KEY_CSTICK_DOWN)
 			tic_mouse->scrolly = -1;
-		}
 
-		if (key_held & KEY_CSTICK_LEFT) {
+		if(key_held & KEY_CSTICK_LEFT)
 			tic_mouse->scrollx = -1;
-		} else if (key_held & KEY_CSTICK_RIGHT) {
+		else if(key_held & KEY_CSTICK_RIGHT)
 			tic_mouse->scrollx = 1;
-		}
 
-		if (tic_mouse->scrollx != 0 || tic_mouse->scrolly != 0) {
+		if(tic_mouse->scrollx != 0 || tic_mouse->scrolly != 0)
+		{
 			hidCstickRead(&cstick);
 			int dmax = cstick.dx > cstick.dy ? cstick.dx : cstick.dy;
 			float delay = 250.0f / (1 + (dmax / 22));

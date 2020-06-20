@@ -28,7 +28,8 @@
 #include <3ds.h>
 #include <citro3d.h>
 
-typedef struct {
+typedef struct
+{
 	C3D_Tex tex;
 	u8 kd[8];
 	u32 kd_count;
